@@ -140,7 +140,7 @@ export class Player {
     const flashGeo = new THREE.PlaneGeometry(BEAM_W, BEAM_L);
     // Offset so the BACK EDGE (origin) is at local z=0, beam extends forward (+z)
     // PlaneGeometry is centered, so shift forward by half length
-    flashGeo.translate(0, -BEAM_L / 2, 0); // -Y local = +Z world after -90deg X rotation = FORWARD
+    // No translate — keep plane centered. Pivot is offset forward each frame instead.
 
     this.flashlight = new THREE.Mesh(flashGeo, this._flashMat);
     this.flashlight.rotation.x = -Math.PI / 2; // lay flat on ground
@@ -253,10 +253,14 @@ export class Player {
     const px = this.mesh.position.x;
     const pz = this.mesh.position.z;
 
-    // Move pivot to player's feet (y=0.018 just above ground)
+    // Pivot at player feet, child plane offset forward in pivot local Z
     this._flashPivot.position.set(px, 0.018, pz);
-    // Rotate pivot in Y to face aim direction (+ PI to flip beam forward)
-    this._flashPivot.rotation.y = Math.atan2(aim.x, aim.z) + Math.PI;
+    this._flashPivot.rotation.y = Math.atan2(aim.x, aim.z);
+    // Offset the flashlight mesh forward in pivot local space
+    // After pivot Y-rotation, local +Z of pivot = world aim direction
+    // Plane rotation.x=-PI/2 means plane local Y = pivot local -Z
+    // So offset plane in local Z by BEAM_HALF to put back edge at feet
+    if (this.flashlight) this.flashlight.position.set(0, 0, 1.25);
 
     // Pulse opacity
     const pulse = 0.82 + Math.sin(now / 280) * 0.18;

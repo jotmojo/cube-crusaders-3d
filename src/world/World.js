@@ -6,6 +6,9 @@ import {
   makeObstacleMaterial, makeCoinMaterial, makeSniperTokenMaterial,
   makeHeartMaterial, makeDoorMaterial, makeWeaponPickupMaterial,
   makeSpeedBootMaterial,
+  makeCoinBagMaterial,
+  makeInvisibilityMaterial,
+  makeGhostModeMaterial,
 } from '../core/VoxelMaterials.js';
 
 export const WORLD = { W: 60, H: 60 }; // world size in units
@@ -23,6 +26,7 @@ export class World {
     this.walls      = []; // { minX, maxX, minZ, maxZ, blockZombies }
     this.pickups    = []; // { mesh, type, active, respawnTimer, x, z }
     this.coins      = []; // { mesh, active }
+    this.coinBags   = []; // drifting bonus bags
     this.door       = null;
     this.doorLocked = true;
     this._glows     = [];
@@ -125,6 +129,8 @@ export class World {
     // Speed boots
     this._placePickup(16,   0,  'speedBoot');
     this._placePickup(-16,  0,  'speedBoot');
+    this._placePickup(0,    16, 'invisibility');
+    this._placePickup(0,   -16, 'ghostMode');
   }
 
   // ─── LEVEL 2 ─────────────────────────────────────────────────
@@ -162,6 +168,8 @@ export class World {
     this._placePickup( 0,  18, 'speedBoot');
     this._placePickup( 0, -18, 'speedBoot');
     this._placePickup(-20, 8,  'speedBoot');
+    this._placePickup(10,   10, 'invisibility');
+    this._placePickup(-10, -10, 'ghostMode');
   }
 
   // ─── LEVEL 3 ─────────────────────────────────────────────────
@@ -524,7 +532,9 @@ export class World {
     else if (type === 'heartToken')  { mat = makeHeartMaterial();       glowCol = 0xff4477; }
     else if (type === 'weaponOmni')  { mat = makeWeaponPickupMaterial('omni');   glowCol = 0xff8800; }
     else if (type === 'weaponSpiral'){ mat = makeWeaponPickupMaterial('spiral'); glowCol = 0xaa00ff; }
-    else if (type === 'speedBoot')   { mat = makeSpeedBootMaterial();           glowCol = 0x0055ff; }
+    else if (type === 'speedBoot')      { mat = makeSpeedBootMaterial();      glowCol = 0x0055ff; }
+    else if (type === 'invisibility')   { mat = makeInvisibilityMaterial();   glowCol = 0xaaaaff; }
+    else if (type === 'ghostMode')      { mat = makeGhostModeMaterial();      glowCol = 0x00ff88; }
     else return;
 
     const geo  = new THREE.BoxGeometry(0.8, 0.8, 0.8);
@@ -540,8 +550,78 @@ export class World {
     this.pickups.push({ mesh, light, type, active: true, respawnTimer: 0, x, z });
   }
 
+  // ─── COIN BAG SPAWNER ───────────────────────────────────────
+  spawnCoinBag() {
+    const values = [2, 5, 10];
+    const value  = values[Math.floor(Math.random() * values.length)];
+    const mat    = makeCoinBagMaterial(value);
+    const geo    = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+    const mesh   = new THREE.Mesh(geo, mat);
+
+    // Start from a random edge
+    const hw = WORLD.W / 2 - 4, hh = WORLD.H / 2 - 4;
+    const side = Math.floor(Math.random() * 4);
+    let sx, sz, ex, ez;
+    if (side === 0) { sx = -hw; sz = (Math.random()-0.5)*WORLD.H*0.8; ex = hw;  ez = (Math.random()-0.5)*WORLD.H*0.8; }
+    if (side === 1) { sx =  hw; sz = (Math.random()-0.5)*WORLD.H*0.8; ex = -hw; ez = (Math.random()-0.5)*WORLD.H*0.8; }
+    if (side === 2) { sx = (Math.random()-0.5)*WORLD.W*0.8; sz = -hh; ex = (Math.random()-0.5)*WORLD.W*0.8; ez = hh; }
+    if (side === 3) { sx = (Math.random()-0.5)*WORLD.W*0.8; sz =  hh; ex = (Math.random()-0.5)*WORLD.W*0.8; ez = -hh; }
+
+    mesh.position.set(sx, 0.7, sz);
+    mesh.castShadow = true;
+    this.scene.add(mesh);
+
+    // Glow
+    const light = new THREE.PointLight(0xffcc00, 0.6, 3);
+    light.position.copy(mesh.position);
+    this.scene.add(light);
+
+    this.coinBags.push({
+      mesh, light, value, active: true,
+      sx, sz, ex, ez,
+      progress: 0,
+      speed: 0.04 + Math.random() * 0.03, // crosses map in ~25-40s
+      _phase: Math.random() * Math.PI * 2,
+    });
+  }
+
+  collectCoinBag(playerPos, radius = 1.2) {
+    for (const b of this.coinBags) {
+      if (!b.active) continue;
+      const dx = playerPos.x - b.mesh.position.x;
+      const dz = playerPos.z - b.mesh.position.z;
+      if (Math.sqrt(dx*dx + dz*dz) < radius) {
+        b.active = false;
+        this.scene.remove(b.mesh);
+        this.scene.remove(b.light);
+        return b.value;
+      }
+    }
+    return 0;
+  }
+
   // ─── UPDATE ──────────────────────────────────────────────────
   update(dt, now) {
+    // Animate + move coin bags
+    this.coinBags = this.coinBags.filter(b => {
+      if (!b.active) return false;
+      b.progress += b.speed * dt;
+      if (b.progress >= 1) {
+        // Reached destination — remove
+        this.scene.remove(b.mesh);
+        this.scene.remove(b.light);
+        return false;
+      }
+      b._phase += dt * 3;
+      b.mesh.position.x = b.sx + (b.ex - b.sx) * b.progress;
+      b.mesh.position.y = 0.6 + Math.sin(b._phase) * 0.2;
+      b.mesh.position.z = b.sz + (b.ez - b.sz) * b.progress;
+      b.mesh.rotation.y += dt * 1.5;
+      b.light.position.copy(b.mesh.position);
+      b.light.intensity = 0.5 + Math.sin(now / 300) * 0.2;
+      return true;
+    });
+
     // Animate coins — float + spin
     this.coins.forEach(c => {
       if (!c.active) return;

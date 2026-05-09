@@ -599,3 +599,75 @@ export function makeBulletMaterial(type = 'player') {
     emissive: emissives[type],
   });
 }
+
+// ─── COIN BAG ─────────────────────────────────────────────────
+export function makeCoinBagMaterial(value) {
+  const tex = makeCanvasTex(64, (ctx) => {
+    // Bag body
+    ctx.fillStyle = '#8B4513'; ctx.fillRect(10,22,44,34);
+    ctx.fillStyle = '#A0522D'; ctx.fillRect(12,24,40,30);
+    // Tie at top
+    ctx.fillStyle = '#DAA520'; ctx.fillRect(18,12,28,14);
+    ctx.fillStyle = '#FFD700'; ctx.fillRect(20,14,24,10);
+    // Gold sheen
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath(); ctx.arc(32,38,12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#FFA500';
+    ctx.beginPath(); ctx.arc(32,38,8,0,Math.PI*2); ctx.fill();
+    // Value text
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(value)+'c', 32, 42);
+    ctx.fillStyle = 'rgba(255,240,150,0.4)'; ctx.fillRect(14,26,10,6);
+  });
+  return new THREE.MeshLambertMaterial({ map: tex });
+}
+
+// ─── INVISIBILITY ─────────────────────────────────────────────
+export function makeInvisibilityMaterial() {
+  const tex = makeCanvasTex(64, (ctx) => {
+    // Ghost shape
+    ctx.fillStyle = 'rgba(180,210,255,0.9)';
+    ctx.beginPath();
+    ctx.arc(32, 26, 20, Math.PI, 0);
+    ctx.lineTo(52, 52); ctx.lineTo(44, 44); ctx.lineTo(36, 52);
+    ctx.lineTo(28, 44); ctx.lineTo(20, 52);
+    ctx.closePath(); ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#001133';
+    ctx.beginPath(); ctx.arc(24,26,5,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(40,26,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#4488ff';
+    ctx.beginPath(); ctx.arc(25,25,2,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(41,25,2,0,Math.PI*2); ctx.fill();
+    // Glow
+    ctx.strokeStyle = 'rgba(100,150,255,0.9)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(32,32,28,0,Math.PI*2); ctx.stroke();
+  });
+  return new THREE.MeshLambertMaterial({ map: tex, transparent: true });
+}
+
+// ─── GHOST MODE ───────────────────────────────────────────────
+export function makeGhostModeMaterial() {
+  const tex = makeCanvasTex(64, (ctx) => {
+    // Skull head
+    ctx.fillStyle = '#eee';
+    ctx.beginPath(); ctx.arc(32,22,18,Math.PI,0); ctx.fill();
+    ctx.fillRect(14,22,36,28);
+    // Eye sockets
+    ctx.fillStyle = '#111';
+    ctx.fillRect(17,18,11,10); ctx.fillRect(36,18,11,10);
+    // Nose
+    ctx.fillStyle = '#aaa'; ctx.fillRect(29,30,6,5);
+    // Teeth
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(16,42,8,10); ctx.fillRect(28,42,8,10); ctx.fillRect(40,42,8,10);
+    ctx.fillStyle = '#111';
+    ctx.fillRect(24,42,4,10); ctx.fillRect(36,42,4,10);
+    // Green glow ring
+    ctx.strokeStyle = 'rgba(0,255,100,0.9)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(32,28,28,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,255,100,0.12)'; ctx.fillRect(0,0,64,64);
+  });
+  return new THREE.MeshLambertMaterial({ map: tex });
+}

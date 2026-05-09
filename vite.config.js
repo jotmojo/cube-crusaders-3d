@@ -2,11 +2,10 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   base: './',
   build: { outDir: 'dist' },
-  server: { port: 3001, open: false },
+  server: { port: 3001, open: true },
   preview: {
-    port: process.env.PORT ? parseInt(process.env.PORT) : 4173,
-    host: '0.0.0.0',
+    port: process.env.PORT ? parseInt(process.env.PORT) : 3001,
+    host: true,
     allowedHosts: 'all',
-    open: false,
   }
 });

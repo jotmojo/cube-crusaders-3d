@@ -10,6 +10,7 @@ import { Zombie }       from './entities/Zombie.js';
 import { World, WORLD, BOUNDS } from './world/World.js';
 import { HUD, TitleScreen, GameOverScreen } from './ui/HUD.js';
 import { ScoreManager, RadiationTimer, BulletManager, SniperAlly } from './systems/Systems.js';
+import { PracticeRange } from './ui/PracticeRange.js';
 
 // ─── STATE ────────────────────────────────────────────────────
 let renderer, input, world, player, hud;
@@ -18,6 +19,9 @@ let playerBullets, zombieBullets;
 let score, rad;
 let coinsCollected = 0, coinsNeeded = 10, level = 1;
 let gameActive = false;
+let coinBagTimer = 0;  // ms until next coin bag spawns
+let invisTimer = 0;    // ms remaining for invisibility
+let ghostTimer = 0;    // ms remaining for ghost mode
 let exitCountdownMs = 0, exitCountdownActive = false;
 let doorUnlocked = false;
 let spawnTimer = 0, spawnRate = 3200, maxZombies = 14, zombieLevel = 1;
@@ -33,6 +37,22 @@ function init() {
   hud      = new HUD();
 
   new TitleScreen(() => startGame(1));
+
+  // Practice Range
+  const practiceRange = new PracticeRange(renderer, () => {
+    // On exit — clear scene and show title
+    const toRemove = [];
+    renderer.scene3d.traverse(obj => { if (obj !== renderer.scene3d) toRemove.push(obj); });
+    toRemove.forEach(obj => renderer.scene3d.remove(obj));
+    renderer._setupLighting();
+    document.getElementById('title-screen').style.display = 'flex';
+  });
+
+  document.getElementById('btn-practice')?.addEventListener('click', () => {
+    document.getElementById('title-screen').style.display = 'none';
+    practiceRange.show();
+  });
+
   new GameOverScreen(
     () => { document.getElementById('gameover-screen').style.display = 'none'; startGame(1); },
     () => { document.getElementById('gameover-screen').style.display = 'none'; document.getElementById('title-screen').style.display = 'flex'; }
@@ -54,23 +74,26 @@ function startGame(lvl) {
   // Reset state
   level               = lvl;
   coinsCollected      = 0;
-  coinsNeeded         = lvl === 1 ? 10 : lvl === 2 ? 20 : 30;
+  coinsNeeded         = Math.min(10 + (lvl - 1) * 10, 50);
   exitCountdownActive = false;
   exitCountdownMs     = 0;
   doorUnlocked        = false;
   zombies             = [];
   snipers             = [];
-  spawnRate           = lvl === 1 ? 3200 : lvl === 2 ? 4000 : 3000;
-  maxZombies          = lvl === 1 ? 14 : lvl === 2 ? 16 : 22;
-  zombieLevel         = Math.min(lvl, 4); // cap at level 4 zombies
+  spawnRate           = Math.max(1500, 3200 - (lvl - 1) * 300);
+  maxZombies          = Math.min(12 + lvl * 2, 30);
+  zombieLevel         = Math.min(Math.ceil(lvl / 2), 4);
   spawnTimer          = 0;
+  coinBagTimer        = 8000; // first bag after 8s
+  invisTimer          = 0;
+  ghostTimer          = 0;
   gameActive          = true;
   lastTime            = -1;
   renderer._cameraReady = false;
 
   // Build world
-  world  = new World(renderer.scene3d, lvl);
-  _wallMeshes = null; // reset — will rebuild after first frame
+  const mapNum = ((lvl - 1) % 3) + 1; // cycle 3 maps
+  world  = new World(renderer.scene3d, mapNum);
   _xrayWalls  = new Set();
 
   // Player spawns safely away from buildings
@@ -78,7 +101,7 @@ function startGame(lvl) {
 
   // Systems
   score = new ScoreManager(lvl === 1 ? 0 : savedScore);
-  rad   = new RadiationTimer(lvl === 1 ? 9000 : lvl === 2 ? 7000 : 5500);
+  rad   = new RadiationTimer(Math.max(4000, 9000 - (lvl - 1) * 800));
   rad.onDamage = () => {
     loseLife('RADIATION!');
   };
@@ -87,12 +110,12 @@ function startGame(lvl) {
   zombieBullets = new BulletManager(renderer.scene3d);
 
   // Initial zombies
-  const initZ = lvl === 1 ? 5 : lvl === 2 ? 6 : 9;
+  const initZ = Math.min(3 + lvl, 10);
   for (let i = 0; i < initZ; i++) spawnZombie();
 
   hud.setLevel(lvl);
-  if (lvl === 2) {
-    hud.popup('LEVEL 2 — ZOMBIES NOW SHOOT!', '#ff4400', 3000);
+  if (lvl > 1) {
+    hud.popup('LEVEL ' + lvl + ' — ' + (lvl >= 3 ? 'SHOOTER ZOMBIES!' : 'ZOMBIES NOW SHOOT!'), '#ff4400', 2500);
   }
 
   document.getElementById('hud').style.display = 'block';
@@ -219,64 +242,92 @@ function flashScreen(color = '#ff0000') {
 let _lifeResetting = false;
 
 function loseLife(reason) {
-  if (!gameActive || _lifeResetting) return;
-  if (!player.takeDamage()) return; // invincible, ignore
+  if (_lifeResetting) return;
+  if (!player.takeDamage()) return; // still invincible
 
   _lifeResetting = true;
-
-  // Big red flash
-  const canvas = renderer.renderer.domElement;
-  canvas.style.filter = 'brightness(3) saturate(0)';
-
-  // Show reason
-  hud.popup(`☠ ${reason}`, '#ff2200', 2200);
-
-  // Freeze game briefly
   gameActive = false;
 
+  const canvas = renderer.renderer.domElement;
+  const flashes = [
+    [0,   'brightness(4) saturate(0)'],
+    [180, 'brightness(0.15)'],
+    [360, 'brightness(3)'],
+    [540, 'brightness(0.15)'],
+    [720, 'brightness(2.5)'],
+    [900, ''],
+  ];
+  flashes.forEach(([t, f]) => setTimeout(() => { canvas.style.filter = f; }, t));
+  hud.popup('\u2620 ' + reason, '#ff2200', 2000);
+
   if (player.health <= 0) {
-    // Dead — wait then game over
-    setTimeout(() => {
-      canvas.style.filter = '';
-      gameOver(false);
-      _lifeResetting = false;
-    }, 1200);
+    setTimeout(() => showContinueScreen(), 1000);
     return;
   }
 
-  // Still alive — do Pac-Man style reset
-  // 1. Freeze 0.6s (white flash)
-  setTimeout(() => { canvas.style.filter = 'brightness(0.3)'; }, 200);
-  setTimeout(() => { canvas.style.filter = 'brightness(2)'; }, 500);
-  setTimeout(() => { canvas.style.filter = 'brightness(0.3)'; }, 700);
-  setTimeout(() => { canvas.style.filter = 'brightness(2)'; }, 900);
   setTimeout(() => {
-    canvas.style.filter = '';
-
-    // 2. Respawn player at safe starting position
     player.mesh.position.set(0, 0.6, 10);
     player.mesh.rotation.y = 0;
     if (player._flashPivot) player._flashPivot.position.set(0, 0.018, 10);
     player.shadowBlob.position.set(0, 0.03, 10);
-    player.isInvincible = true;
-    player.invincibleTimer = 3000; // 3s invincibility after respawn
-
-    // 3. Push ALL zombies back to edges
+    player.isInvincible    = true;
+    player.invincibleTimer = 3000;
     zombies.forEach(z => {
       if (z.isDead) return;
-      const { x, z: zz } = world.getRandomSpawnEdge();
-      z.mesh.position.set(x, z.mesh.position.y, zz);
+      const edge = world.getRandomSpawnEdge();
+      z.mesh.position.x = edge.x;
+      z.mesh.position.z = edge.z;
     });
-
-    // 4. Clear all bullets
     playerBullets.clear();
     zombieBullets.clear();
-
-    // 5. Resume
-    gameActive = true;
+    gameActive     = true;
     _lifeResetting = false;
     hud.popup('GET READY!', '#ffcc00', 1200);
-  }, 1400);
+  }, 1000);
+}
+
+// ─── CONTINUE SCREEN ──────────────────────────────────────────
+function showContinueScreen() {
+  let overlay = document.getElementById('continue-screen');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'continue-screen';
+    overlay.style.cssText = [
+      'position:fixed','inset:0','background:rgba(0,0,0,0.92)',
+      'display:flex','flex-direction:column','align-items:center',
+      'justify-content:center','z-index:200',
+      "font-family:'Press Start 2P','Courier New',monospace"
+    ].join(';');
+    document.body.appendChild(overlay);
+  }
+  const hi = parseInt(localStorage.getItem('ccHighScore') || '0');
+  const isNew = score.score > 0 && score.score >= hi;
+  const hiText = isNew ? 'NEW HIGH SCORE!' : 'BEST: ' + hi.toLocaleString();
+  overlay.innerHTML = [
+    '<div style="font-size:48px;color:#ff2200;text-shadow:0 0 30px #ff2200;letter-spacing:3px;margin-bottom:12px">GAME OVER</div>',
+    '<div style="font-size:11px;color:#888;letter-spacing:3px;margin-bottom:8px">LEVEL ' + level + ' REACHED</div>',
+    '<div style="border:3px solid #333;padding:20px 50px;margin:18px 0;text-align:center;background:rgba(10,10,20,0.8)">',
+      '<div style="font-size:10px;color:#888;letter-spacing:2px;margin-bottom:6px">FINAL SCORE</div>',
+      '<div style="font-size:38px;color:#fff;letter-spacing:4px">' + String(score.score).padStart(7,'0') + '</div>',
+      '<div style="font-size:10px;color:#ffcc00;margin-top:8px">' + hiText + '</div>',
+    '</div>',
+    '<div style="font-size:13px;color:#ffcc00;margin-bottom:24px;letter-spacing:2px;text-shadow:0 0 10px #ffcc00">CONTINUE?</div>',
+    '<div style="display:flex;gap:14px">',
+      '<button id="btn-continue" style="font-size:12px;font-family:inherit;color:#00ff66;border:3px solid #00ff66;background:rgba(0,20,10,0.9);padding:14px 32px;cursor:pointer;letter-spacing:2px">CONTINUE</button>',
+      '<button id="btn-quit-co" style="font-size:12px;font-family:inherit;color:#00ccff;border:3px solid #00ccff;background:rgba(0,10,20,0.9);padding:14px 32px;cursor:pointer;letter-spacing:2px">QUIT</button>',
+    '</div>',
+    '<div style="font-size:8px;color:#334;margin-top:14px;letter-spacing:2px">SPACE = continue from level 1   ESC = quit</div>',
+  ].join('');
+  overlay.style.display = 'flex';
+
+  const hide = () => { overlay.style.display = 'none'; _lifeResetting = false; };
+  document.getElementById('btn-continue').addEventListener('click', () => { hide(); startGame(1); }, { once: true });
+  document.getElementById('btn-quit-co').addEventListener('click', () => { hide(); document.getElementById('title-screen').style.display = 'flex'; }, { once: true });
+  const handler = (e) => {
+    if (e.code === 'Space' || e.code === 'Enter') { hide(); startGame(1); document.removeEventListener('keydown', handler); }
+    if (e.code === 'Escape') { hide(); document.getElementById('title-screen').style.display = 'flex'; document.removeEventListener('keydown', handler); }
+  };
+  document.addEventListener('keydown', handler);
 }
 
 // ─── GAME LOOP ────────────────────────────────────────────────
@@ -415,25 +466,21 @@ function loop(ts) {
     else if (pickup === 'heartToken')   { player.addLife(); hud.popup('❤ +1 LIFE!', '#ff88aa'); }
     else if (pickup === 'weaponOmni')   { player.activateSpecial('omni');   hud.popup('💥 OMNI SHOT! 8s', '#ff8800'); }
     else if (pickup === 'weaponSpiral') { player.activateSpecial('spiral'); hud.popup('🌀 SPIRAL! 50 ammo', '#aa00ff'); }
-    else if (pickup === 'speedBoot')   { player.activateSpeedBoost(6000); hud.popup('⚡ SPEED BOOST! 6s', '#0088ff'); }
+    else if (pickup === 'speedBoot')     { player.activateSpeedBoost(6000); hud.popup('SPEED BOOST! 6s', '#0088ff'); }
+    else if (pickup === 'invisibility')  { invisTimer = 8000; hud.popup('INVISIBLE! 8s', '#aaaaff'); }
+    else if (pickup === 'ghostMode')     { ghostTimer = 6000; hud.popup('GHOST MODE! 6s', '#00ff88'); }
   }
 
   // ── Door interaction ──
   if (doorUnlocked && !levelTransitioning && world.isNearDoor(player.position, 1.5)) {
-    if (level < 3) {
-      // Advance to next level
-      levelTransitioning = true;
-      savedScore = score.score;
-      gameActive = false;
-      hud.popup(`🏆 LEVEL ${level} COMPLETE! LOADING LEVEL ${level + 1}...`, '#00ff66', 2500);
-      setTimeout(() => startGame(level + 1), 2600);
-    } else {
-      // Level 3 complete — full win!
-      gameOver(true);
-    }
+    // Always advance — infinite levels
+    levelTransitioning = true;
+    savedScore = score.score;
+    gameActive = false;
+    hud.popup("LEVEL " + level + " COMPLETE!", "#00ff66", 2200);
+    setTimeout(() => startGame(level + 1), 2400);
     return;
   }
-
   // ── Radiation ──
   const inSafe = world.isInSafeZone(player.position);
   if (inSafe  && !rad.isActive) rad.enter();
@@ -449,7 +496,7 @@ function loop(ts) {
       renderer.scene3d.background = new THREE.Color(0x080810);
     }
     if (exitCountdownMs <= 0) {
-      exitCountdownMs = level === 1 ? 30000 : 25000;
+      exitCountdownMs = Math.max(20000, 35000 - (level - 1) * 2000);
       loseLife('TOO SLOW!');
       for (let i = 0; i < 3; i++) spawnZombie();
     }
@@ -459,6 +506,46 @@ function loop(ts) {
   score.update(dt);
   world.update(dt, now);
   world.updateRadTimers(rad, player.position);
+
+  // ── Coin bag spawning (Pac-Man fruit style) ──
+  coinBagTimer -= dt * 1000;
+  if (coinBagTimer <= 0) {
+    world.spawnCoinBag();
+    coinBagTimer = 12000 + Math.random() * 8000; // every 12-20s
+  }
+  const bagCoins = world.collectCoinBag(player.position);
+  if (bagCoins > 0) {
+    coinsCollected += bagCoins;
+    score.add(bagCoins * 10);
+    hud.popup('COIN BAG +' + bagCoins + '!', '#ffcc00');
+    if (coinsCollected >= coinsNeeded && !doorUnlocked) unlockDoor();
+  }
+
+  // ── Invisibility timer ──
+  if (invisTimer > 0) {
+    invisTimer -= dt * 1000;
+    player.mesh.visible = Math.floor(now / 150) % 2 === 0; // flicker
+    player.outline.visible = false;
+  } else if (!player.isInvincible) {
+    player.mesh.visible = true;
+    if (player.outline) player.outline.visible = true;
+  }
+
+  // ── Ghost mode — walk through zombies and explode them ──
+  if (ghostTimer > 0) {
+    ghostTimer -= dt * 1000;
+    liveZombies.forEach(z => {
+      if (z.isDead) return;
+      const dx = player.position.x - z.position.x;
+      const dz = player.position.z - z.position.z;
+      if (Math.sqrt(dx*dx + dz*dz) < 1.2) {
+        // Explode into green blocks
+        playerBullets.explode(z.position.clone(), 0x22cc44);
+        score.add(z.scoreValue * 2);
+        z.die();
+      }
+    });
+  }
 
   // ── Zombie spawning ──
   spawnTimer += dt * 1000;
@@ -499,7 +586,7 @@ function unlockDoor() {
   doorUnlocked = true;
   world.unlockDoor();
   exitCountdownActive = true;
-  exitCountdownMs     = level === 1 ? 45000 : 40000;
+  exitCountdownMs     = Math.max(25000, 45000 - (level - 1) * 3000);
   hud.popup('🚪 EXIT UNLOCKED! GET TO THE DOOR!', '#00ff66', 3500);
   for (let i = 0; i < 4; i++) spawnZombie();
 }
