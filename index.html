@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CUBE CRUSADERS</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --cyan:   #00ffff;
+      --yellow: #ffcc00;
+      --green:  #00ff44;
+      --red:    #ff2200;
+      --orange: #ff8800;
+      --purple: #cc00ff;
+      --white:  #ffffff;
+      --dark:   rgba(0,0,0,0.88);
+      --font:   'Press Start 2P', 'Courier New', monospace;
+    }
+
+    body {
+      background: #000;
+      overflow: hidden;
+      font-family: var(--font);
+      user-select: none;
+      cursor: crosshair;
+    }
+
+    #game-canvas { display: block; width: 100vw; height: 100vh; }
+
+    /* ══════════════════════════════════════
+       HUD OVERLAY
+    ══════════════════════════════════════ */
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+
+    /* ── Top bar ── */
+    #hud-top {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 64px;
+      background: linear-gradient(180deg, rgba(0,0,0,0.95) 0%, transparent 100%);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 28px;
+      border-bottom: 2px solid rgba(0,255,255,0.2);
+    }
+
+    /* ── Bottom bar ── */
+    #hud-bottom {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 62px;
+      background: linear-gradient(0deg, rgba(0,0,0,0.95) 0%, transparent 100%);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 28px;
+      border-top: 2px solid rgba(0,255,0,0.2);
+    }
+
+    .hud-label {
+      font-size: 7px;
+      color: #667788;
+      letter-spacing: 2px;
+      font-family: var(--font);
+      margin-bottom: 3px;
+    }
+
+    .hud-value {
+      font-size: 18px;
+      color: var(--white);
+      font-family: var(--font);
+      text-shadow: 0 0 10px var(--cyan);
+    }
+
+    .hud-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hud-sep { flex: 1; }
+
+    /* Lives */
+    #lives-row { display: flex; gap: 5px; align-items: center; margin-top: 2px; }
+
+    .life-cube {
+      width: 16px; height: 16px;
+      background: var(--white);
+      box-shadow: inset -4px -4px 0 #888, inset 4px 4px 0 #fff,
+                  0 0 8px rgba(0,220,255,0.6);
+      image-rendering: pixelated;
+      transition: background 0.1s;
+    }
+    .life-cube.dead {
+      background: #1a1a1a;
+      box-shadow: inset -4px -4px 0 #000, inset 4px 4px 0 #333;
+    }
+
+    /* Score */
+    #score-display {
+      font-size: 28px;
+      font-family: var(--font);
+      color: var(--white);
+      text-shadow: 0 0 16px rgba(255,255,255,0.5), 0 0 32px rgba(0,200,255,0.3);
+      letter-spacing: 3px;
+    }
+
+    /* Weapon */
+    #weapon-display {
+      font-size: 11px;
+      font-family: var(--font);
+      color: var(--cyan);
+      text-shadow: 0 0 8px var(--cyan);
+      letter-spacing: 1px;
+    }
+
+    /* Radiation bar */
+    #rad-bar-bg {
+      width: 180px; height: 14px;
+      background: #0a1a0a;
+      border: 2px solid #224422;
+      image-rendering: pixelated;
+    }
+    #rad-bar-fill {
+      height: 100%;
+      background: var(--green);
+      transition: width 0.15s linear, background 0.3s;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    /* Coin bar */
+    #coin-bar-bg {
+      width: 130px; height: 10px;
+      background: #1a1400;
+      border: 2px solid #443300;
+    }
+    #coin-bar-fill {
+      height: 100%;
+      background: var(--yellow);
+      transition: width 0.2s;
+      box-shadow: 0 0 6px var(--yellow);
+    }
+
+    /* Zone display */
+    #zone-display {
+      font-size: 11px;
+      font-family: var(--font);
+      color: var(--green);
+      text-shadow: 0 0 10px var(--green);
+    }
+
+    /* Coin display */
+    #coin-display {
+      font-size: 14px;
+      font-family: var(--font);
+      color: var(--yellow);
+      text-shadow: 0 0 10px var(--yellow);
+    }
+
+    /* Combo */
+    #combo-display {
+      font-size: 13px;
+      font-family: var(--font);
+      color: var(--orange);
+      text-shadow: 0 0 12px var(--orange);
+    }
+
+    /* ── EXIT COUNTDOWN — big, center screen ── */
+    #exit-countdown {
+      position: absolute;
+      top: 78px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 20px;
+      font-family: var(--font);
+      color: var(--yellow);
+      text-shadow: 0 0 20px var(--yellow), 0 0 40px rgba(255,200,0,0.4);
+      background: rgba(0,0,0,0.85);
+      padding: 10px 28px;
+      border: 3px solid var(--yellow);
+      display: none;
+      white-space: nowrap;
+      letter-spacing: 2px;
+    }
+
+    /* ── RAD WARNING ── */
+    #rad-warning {
+      position: absolute;
+      top: 46%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 22px;
+      font-family: var(--font);
+      color: var(--red);
+      text-shadow: 0 0 24px var(--red), 0 0 48px rgba(255,0,0,0.4);
+      display: none;
+      pointer-events: none;
+      letter-spacing: 2px;
+    }
+
+    /* ── POPUP ── */
+    #popup-msg {
+      position: absolute;
+      top: 44%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 18px;
+      font-family: var(--font);
+      color: var(--white);
+      text-shadow: 0 0 14px var(--white);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+      letter-spacing: 1px;
+    }
+
+    /* ── MINIMAP ── */
+    #minimap {
+      position: absolute;
+      top: 72px;
+      right: 14px;
+      width: 170px;
+      height: 128px;
+      background: rgba(0,0,0,0.8);
+      border: 2px solid var(--green);
+      box-shadow: 0 0 12px rgba(0,255,68,0.3);
+    }
+    #minimap-canvas { width: 100%; height: 100%; }
+    #minimap-label {
+      position: absolute;
+      top: 3px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 7px;
+      color: var(--green);
+      font-family: var(--font);
+      letter-spacing: 3px;
+      text-shadow: 0 0 6px var(--green);
+    }
+
+    /* ── SPECIAL BAR ── */
+    #special-bar { display: none; flex-direction: column; align-items: center; }
+    #special-fill-bg {
+      width: 110px; height: 10px;
+      background: #111; border: 2px solid #333;
+    }
+    #special-fill { height: 100%; background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+    #special-label { font-size: 8px; color: var(--orange); font-family: var(--font); margin-bottom: 3px; text-shadow: 0 0 8px var(--orange); }
+
+    /* ══════════════════════════════════════
+       TITLE SCREEN
+    ══════════════════════════════════════ */
+    #title-screen {
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse at center, #0a0a1a 0%, #000 70%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    #title-screen h1 {
+      font-size: 64px;
+      font-family: var(--font);
+      color: var(--white);
+      letter-spacing: 6px;
+      text-shadow: 0 0 30px rgba(255,255,255,0.4), 4px 4px 0 #333;
+      line-height: 1;
+      margin-bottom: 8px;
+      -webkit-text-stroke: 2px #aaa;
+    }
+
+    #title-screen h2 {
+      font-size: 48px;
+      font-family: var(--font);
+      color: var(--yellow);
+      letter-spacing: 3px;
+      text-shadow: 0 0 24px rgba(255,204,0,0.6), 4px 4px 0 #552200;
+      margin-bottom: 16px;
+      -webkit-text-stroke: 2px #884400;
+    }
+
+    #title-screen .tagline {
+      font-size: 11px;
+      color: var(--green);
+      font-family: var(--font);
+      letter-spacing: 4px;
+      margin-bottom: 44px;
+      text-shadow: 0 0 12px var(--green);
+    }
+
+    #title-features {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 44px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 780px;
+    }
+
+    .feature-tag {
+      font-size: 9px;
+      font-family: var(--font);
+      color: var(--green);
+      border: 2px solid var(--green);
+      padding: 6px 14px;
+      letter-spacing: 1px;
+      text-shadow: 0 0 8px var(--green);
+      box-shadow: 0 0 10px rgba(0,255,68,0.2), inset 0 0 10px rgba(0,255,68,0.05);
+    }
+
+    .title-btn {
+      font-size: 16px;
+      font-family: var(--font);
+      color: var(--green);
+      background: rgba(0,20,10,0.9);
+      border: 3px solid var(--green);
+      padding: 16px 52px;
+      cursor: pointer;
+      letter-spacing: 3px;
+      margin: 7px 0;
+      width: 380px;
+      text-align: center;
+      pointer-events: all;
+      transition: all 0.12s;
+      text-shadow: 0 0 10px var(--green);
+      box-shadow: 0 0 16px rgba(0,255,68,0.2), inset 0 0 16px rgba(0,255,68,0.05);
+      -webkit-text-stroke: 1px rgba(0,200,50,0.5);
+    }
+
+    .title-btn:hover {
+      background: rgba(0,60,30,0.95);
+      box-shadow: 0 0 30px rgba(0,255,68,0.5), inset 0 0 20px rgba(0,255,68,0.1);
+      transform: scale(1.03);
+      color: #fff;
+    }
+
+    .title-btn.secondary {
+      color: var(--cyan);
+      border-color: var(--cyan);
+      background: rgba(0,10,20,0.9);
+      font-size: 13px;
+      text-shadow: 0 0 10px var(--cyan);
+      box-shadow: 0 0 16px rgba(0,220,255,0.2), inset 0 0 16px rgba(0,220,255,0.05);
+    }
+    .title-btn.secondary:hover {
+      background: rgba(0,30,60,0.95);
+      box-shadow: 0 0 30px rgba(0,220,255,0.5);
+    }
+
+    #title-score {
+      margin-top: 22px;
+      font-size: 13px;
+      color: var(--yellow);
+      font-family: var(--font);
+      letter-spacing: 2px;
+      text-shadow: 0 0 10px var(--yellow);
+    }
+
+    #title-bottom {
+      position: absolute;
+      bottom: 22px;
+      font-size: 12px;
+      color: var(--red);
+      font-family: var(--font);
+      letter-spacing: 3px;
+      text-shadow: 0 0 14px var(--red);
+    }
+
+    /* ══════════════════════════════════════
+       GAME OVER SCREEN
+    ══════════════════════════════════════ */
+    #gameover-screen {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.94);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    #gameover-title {
+      font-size: 56px;
+      font-family: var(--font);
+      color: var(--red);
+      text-shadow: 0 0 40px var(--red), 4px 4px 0 #440000;
+      margin-bottom: 18px;
+      -webkit-text-stroke: 2px #880000;
+      letter-spacing: 3px;
+    }
+
+    #gameover-title.won-title {
+      color: var(--yellow);
+      text-shadow: 0 0 40px var(--yellow), 4px 4px 0 #442200;
+      -webkit-text-stroke: 2px #884400;
+    }
+
+    #gameover-score-box {
+      border: 3px solid #333;
+      padding: 28px 70px;
+      margin: 22px 0;
+      text-align: center;
+      background: rgba(10,10,20,0.8);
+      box-shadow: inset 0 0 30px rgba(0,0,0,0.5);
+    }
+
+    #gameover-score {
+      font-size: 44px;
+      font-family: var(--font);
+      color: var(--white);
+      text-shadow: 0 0 20px rgba(255,255,255,0.4);
+      letter-spacing: 4px;
+    }
+
+    #gameover-high {
+      font-size: 12px;
+      font-family: var(--font);
+      color: var(--yellow);
+      margin-top: 10px;
+      text-shadow: 0 0 10px var(--yellow);
+    }
+
+    .go-btn {
+      font-size: 15px;
+      font-family: var(--font);
+      padding: 16px 44px;
+      margin: 7px;
+      cursor: pointer;
+      border: 3px solid;
+      background: transparent;
+      pointer-events: all;
+      letter-spacing: 3px;
+      transition: all 0.12s;
+    }
+    .go-btn:hover { transform: scale(1.05); opacity: 0.85; }
+    .go-btn.play { color: var(--green); border-color: var(--green); text-shadow: 0 0 10px var(--green); }
+    .go-btn.menu { color: var(--cyan);  border-color: var(--cyan);  text-shadow: 0 0 10px var(--cyan); }
+
+    #go-keys {
+      font-size: 9px;
+      color: #445;
+      font-family: var(--font);
+      margin-top: 18px;
+      letter-spacing: 2px;
+    }
+
+    #gameover-level {
+      color: #667788;
+      font-family: var(--font);
+      font-size: 11px;
+      letter-spacing: 3px;
+      margin-bottom: 14px;
+    }
+
+    #gameover-quote {
+      font-size: 9px;
+      color: #334;
+      font-family: var(--font);
+      margin-bottom: 22px;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- THREE.JS CANVAS -->
+<canvas id="game-canvas"></canvas>
+
+<!-- HUD OVERLAY -->
+<div id="hud">
+  <div id="hud-top">
+    <!-- Level badge -->
+    <div class="hud-block">
+      <span class="hud-label">LEVEL</span>
+      <span class="hud-value" id="hud-level">1</span>
+    </div>
+
+    <!-- Lives -->
+    <div class="hud-block">
+      <span class="hud-label">LIVES</span>
+      <div id="lives-row">
+        <div class="life-cube" id="life-0"></div>
+        <div class="life-cube" id="life-1"></div>
+        <div class="life-cube" id="life-2"></div>
+        <div class="life-cube" id="life-3"></div>
+        <div class="life-cube" id="life-4"></div>
+      </div>
+    </div>
+
+    <!-- Weapon -->
+    <div class="hud-block">
+      <span class="hud-label">WEAPON</span>
+      <span id="weapon-display">PISTOL</span>
+    </div>
+
+    <!-- Special weapon -->
+    <div class="hud-block" id="special-bar">
+      <span class="hud-label" id="special-label">SPECIAL</span>
+      <div id="special-fill-bg"><div id="special-fill"></div></div>
+    </div>
+
+    <div class="hud-sep"></div>
+
+    <!-- Score -->
+    <div class="hud-block">
+      <span class="hud-label">SCORE</span>
+      <span id="score-display">0000000</span>
+    </div>
+
+    <div class="hud-sep"></div>
+
+    <!-- High score -->
+    <div class="hud-block">
+      <span class="hud-label">BEST</span>
+      <span class="hud-value" id="high-display">0</span>
+    </div>
+  </div>
+
+  <!-- Exit countdown -->
+  <div id="exit-countdown">⏰ EXIT IN: <span id="countdown-secs">45</span>s</div>
+
+  <!-- Rad warning center screen -->
+  <div id="rad-warning">⚠ RADIATION CRITICAL ⚠</div>
+
+  <!-- Popup message -->
+  <div id="popup-msg"></div>
+
+  <!-- Minimap -->
+  <div id="minimap">
+    <span id="minimap-label">MAP</span>
+    <canvas id="minimap-canvas" width="160" height="120"></canvas>
+  </div>
+
+  <div id="hud-bottom">
+    <!-- Radiation -->
+    <div class="hud-block">
+      <span class="hud-label">☢ RADIATION</span>
+      <div id="rad-bar-bg"><div id="rad-bar-fill"></div></div>
+    </div>
+
+    <!-- Building status -->
+    <div class="hud-block">
+      <span class="hud-label">ZONE</span>
+      <span class="hud-value" id="zone-display" style="font-size:13px;color:#00ff88">OUTSIDE</span>
+    </div>
+
+    <!-- Coins -->
+    <div class="hud-block">
+      <span class="hud-label">🪙 COINS</span>
+      <span class="hud-value" id="coin-display" style="font-size:14px;color:#ffcc00">0 / 10</span>
+    </div>
+
+    <div class="hud-block">
+      <div id="coin-bar-bg"><div id="coin-bar-fill"></div></div>
+    </div>
+
+    <div class="hud-sep"></div>
+
+    <!-- Combo -->
+    <div class="hud-block">
+      <span class="hud-label">COMBO</span>
+      <span class="hud-value" id="combo-display" style="font-size:13px;color:#ff8800"></span>
+    </div>
+  </div>
+</div>
+
+<!-- TITLE SCREEN -->
+<div id="title-screen">
+  <h1>CUBE</h1>
+  <h2>CRUSADERS!</h2>
+  <p class="tagline">SURVIVE. SHOOT. UNLOCK. ESCAPE.</p>
+
+  <div id="title-features">
+    <span class="feature-tag">☢ RADIATION ZONES</span>
+    <span class="feature-tag">🧟 ZOMBIE EVOLUTION</span>
+    <span class="feature-tag">🎯 SNIPER AID</span>
+    <span class="feature-tag">🔒 UNLOCK THE EXIT</span>
+    <span class="feature-tag">💥 SPECIAL WEAPONS</span>
+  </div>
+
+  <button class="title-btn" id="btn-start">START GAME</button>
+  <button class="title-btn secondary" id="btn-scores">HIGH SCORES</button>
+
+  <div id="title-score">BEST: <span id="title-high">0</span></div>
+  <div id="title-bottom">GET IN. GET OUT. OR GET CUBED.</div>
+</div>
+
+<!-- GAME OVER SCREEN -->
+<div id="gameover-screen">
+  <div id="gameover-title">GAME OVER</div>
+  <div id="gameover-level" style="color:#888;font-family:Courier New;font-size:14px;letter-spacing:2px;margin-bottom:12px"></div>
+  <div id="gameover-score-box">
+    <div style="font-size:12px;color:#888;font-family:Courier New;letter-spacing:2px;margin-bottom:8px">FINAL SCORE</div>
+    <div id="gameover-score">0000000</div>
+    <div id="gameover-high"></div>
+  </div>
+  <div id="gameover-quote" style="font-size:11px;color:#444;font-family:Courier New;margin-bottom:20px;letter-spacing:1px"></div>
+  <div style="display:flex;gap:12px">
+    <button class="go-btn play" id="btn-replay">PLAY AGAIN</button>
+    <button class="go-btn menu" id="btn-menu">MAIN MENU</button>
+  </div>
+  <div id="go-keys">SPACE = play again  |  ESC = menu</div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
