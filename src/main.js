@@ -88,10 +88,10 @@ function startGame(lvl) {
   invisTimer          = 0;
   ghostTimer          = 0;
   gameActive          = true;
-  input.showMobileUI(true);
+  // mobile UI shown after world builds
   lastTime            = -1;
   renderer._cameraReady = false;
-  input.showMobileUI(false); // hide during level transition
+  // (mobile UI shown after world builds)
 
   // Build world
   const mapNum = ((lvl - 1) % 3) + 1; // cycle 3 maps
@@ -114,6 +114,7 @@ function startGame(lvl) {
   // Initial zombies
   const initZ = Math.min(3 + lvl, 10);
   for (let i = 0; i < initZ; i++) spawnZombie();
+  input.showMobileUI(true); // show joysticks now that world is ready
 
   hud.setLevel(lvl);
   if (lvl > 1) {
@@ -290,6 +291,7 @@ function loseLife(reason) {
 
 // ─── CONTINUE SCREEN ──────────────────────────────────────────
 function showContinueScreen() {
+  input.showMobileUI(false);
   let overlay = document.getElementById('continue-screen');
   if (!overlay) {
     overlay = document.createElement('div');

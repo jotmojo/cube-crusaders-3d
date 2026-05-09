@@ -260,7 +260,7 @@ export class Player {
     // After pivot Y-rotation, local +Z of pivot = world aim direction
     // Plane rotation.x=-PI/2 means plane local Y = pivot local -Z
     // So offset plane in local Z by BEAM_HALF to put back edge at feet
-    if (this.flashlight) this.flashlight.position.set(0, 0, 1.25);
+    if (this.flashlight) this.flashlight.position.set(0, 0, -1.25); // negative = forward with PI rotation
 
     // Pulse opacity
     const pulse = 0.82 + Math.sin(now / 280) * 0.18;

@@ -35,6 +35,8 @@ export class InputManager {
     if (IS_TOUCH) {
       this._buildJoystickUI();
       this._bindTouch();
+      // Start visible — game will hide during menus
+      this._joystickEnabled = true;
     } else {
       this._bindDesktop();
     }
@@ -48,6 +50,7 @@ export class InputManager {
         position: fixed; inset: 0; z-index: 50;
         pointer-events: none;
         touch-action: none;
+        display: none;
       }
       .js-zone {
         position: absolute; bottom: 0;
@@ -184,7 +187,7 @@ export class InputManager {
     const MAX  = 55;   // max stick displacement px
 
     const handleStart = (e) => {
-      if (!this._joystickEnabled) return; // let UI buttons through
+      if (!this._joystickEnabled) return;
       e.preventDefault();
       const hw = window.innerWidth / 2;
 
