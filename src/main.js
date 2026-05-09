@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { Renderer }     from './core/Renderer.js';
-import { InputManager } from './core/InputManager.js';
+import { InputManager, IS_TOUCH } from './core/InputManager.js';
 import { Player }       from './entities/Player.js';
 import { Zombie }       from './entities/Zombie.js';
 import { World, WORLD, BOUNDS } from './world/World.js';
@@ -88,8 +88,10 @@ function startGame(lvl) {
   invisTimer          = 0;
   ghostTimer          = 0;
   gameActive          = true;
+  input.showMobileUI(true);
   lastTime            = -1;
   renderer._cameraReady = false;
+  input.showMobileUI(false); // hide during level transition
 
   // Build world
   const mapNum = ((lvl - 1) % 3) + 1; // cycle 3 maps
