@@ -362,6 +362,37 @@ function loop(ts) {
     shots.forEach(s => playerBullets.spawn({ ...s, team: 'player' }));
   }
 
+  // ── Bullets vs walls ──
+  // Remove player bullets that hit a wall
+  playerBullets.bullets = playerBullets.bullets.filter(b => {
+    let hit = false;
+    if (world && world.walls) {
+      for (const w of world.walls) {
+        const bx = b.mesh.position.x, bz = b.mesh.position.z;
+        if (bx > w.minX && bx < w.maxX && bz > w.minZ && bz < w.maxZ) {
+          playerBullets.scene.remove(b.mesh);
+          playerBullets._pool.push(b.mesh);
+          hit = true; break;
+        }
+      }
+    }
+    return !hit;
+  });
+  zombieBullets.bullets = zombieBullets.bullets.filter(b => {
+    let hit = false;
+    if (world && world.walls) {
+      for (const w of world.walls) {
+        const bx = b.mesh.position.x, bz = b.mesh.position.z;
+        if (bx > w.minX && bx < w.maxX && bz > w.minZ && bz < w.maxZ) {
+          zombieBullets.scene.remove(b.mesh);
+          zombieBullets._pool.push(b.mesh);
+          hit = true; break;
+        }
+      }
+    }
+    return !hit;
+  });
+
   // ── Bullets ──
   playerBullets.update(dt);
   zombieBullets.update(dt);
@@ -406,7 +437,7 @@ function loop(ts) {
       : player.position;
 
     // Block zombie from entering safe zones
-    const shot = z.update(dt, targetPos, now);
+    const shot = z.update(dt, targetPos, now, world.safeZones, world.walls);
     if (shot) zombieBullets.spawn({ ...shot, team: 'zombie' });
 
     // Resolve zombie vs walls (non-building walls only)

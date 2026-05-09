@@ -42,6 +42,13 @@ export class Zombie {
     }
 
     this._bobOffset = Math.random() * Math.PI * 2;
+    // Wander / patrol state
+    this._wanderAngle  = Math.random() * Math.PI * 2; // current wander direction
+    this._wanderTimer  = 1.5 + Math.random() * 2;     // time until next direction change
+    this._chaseMode    = false;                        // true when close to player
+    this._spawnDelay   = 1.5 + Math.random() * 1.5;   // wander before chasing
+    this._blocked      = false;                        // wall avoidance flag
+    this._blockTimer   = 0;
   }
 
   _buildHpBar(scale) {
@@ -82,19 +89,108 @@ export class Zombie {
 
   get position() { return this.mesh.position; }
 
-  update(dt, playerPos, now) {
+  update(dt, playerPos, now, safeZones = [], walls = []) {
     if (this.isDead) return null;
 
-    const dx = playerPos.x - this.mesh.position.x;
-    const dz = playerPos.z - this.mesh.position.z;
-    const dist = Math.sqrt(dx * dx + dz * dz);
+    const dx    = playerPos.x - this.mesh.position.x;
+    const dz    = playerPos.z - this.mesh.position.z;
+    const dist  = Math.sqrt(dx * dx + dz * dz);
 
-    // Chase player
-    if (dist > 0.1) {
-      const nx = dx / dist, nz = dz / dist;
-      this.mesh.position.x += nx * this.def.speed * dt;
-      this.mesh.position.z += nz * this.def.speed * dt;
-      this.mesh.rotation.y  = Math.atan2(nx, nz);
+    // ── Spawn delay — wander randomly before chasing ──
+    if (this._spawnDelay > 0) {
+      this._spawnDelay -= dt;
+      this._wanderTimer -= dt;
+      if (this._wanderTimer <= 0) {
+        this._wanderAngle += (Math.random() - 0.5) * Math.PI;
+        this._wanderTimer  = 1.5 + Math.random() * 2;
+      }
+      const wx = Math.sin(this._wanderAngle) * this.def.speed * 0.5 * dt;
+      const wz = Math.cos(this._wanderAngle) * this.def.speed * 0.5 * dt;
+      this.mesh.position.x += wx;
+      this.mesh.position.z += wz;
+      this.mesh.rotation.y  = this._wanderAngle;
+      // Clamp to world bounds
+      this.mesh.position.x = Math.max(-28, Math.min(28, this.mesh.position.x));
+      this.mesh.position.z = Math.max(-28, Math.min(28, this.mesh.position.z));
+    } else {
+      // ── Chase / wander logic ──
+      const CHASE_RANGE = 22; // start chasing when within range
+      const close = dist < CHASE_RANGE;
+
+      if (close) {
+        // Direct chase with slight wander offset for natural feel
+        this._wanderTimer -= dt;
+        if (this._wanderTimer <= 0) {
+          // Occasionally veer off path slightly (pac-man ghost feel)
+          this._wanderAngle = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.9;
+          this._wanderTimer = 1.0 + Math.random() * 1.5;
+        }
+        // Blend between direct chase and wander angle
+        const chaseAngle  = Math.atan2(dx, dz);
+        const blendAngle  = chaseAngle * 0.75 + this._wanderAngle * 0.25;
+        const nx = Math.sin(blendAngle), nz = Math.cos(blendAngle);
+
+        // ── Block from entering safe zones ──
+        const nextX = this.mesh.position.x + nx * this.def.speed * dt;
+        const nextZ = this.mesh.position.z + nz * this.def.speed * dt;
+        let inSafe = false;
+        for (const sz of safeZones) {
+          if (nextX > sz.minX && nextX < sz.maxX && nextZ > sz.minZ && nextZ < sz.maxZ) {
+            inSafe = true; break;
+          }
+        }
+
+        if (!inSafe) {
+          this.mesh.position.x += nx * this.def.speed * dt;
+          this.mesh.position.z += nz * this.def.speed * dt;
+          this.mesh.rotation.y  = blendAngle;
+        } else {
+          // Slide along safe zone boundary — try X only, then Z only
+          const tryX = this.mesh.position.x + nx * this.def.speed * dt;
+          let xSafe = true;
+          for (const sz of safeZones) {
+            if (tryX > sz.minX && tryX < sz.maxX && this.mesh.position.z > sz.minZ && this.mesh.position.z < sz.maxZ) {
+              xSafe = false; break;
+            }
+          }
+          if (xSafe) {
+            this.mesh.position.x += nx * this.def.speed * dt;
+          } else {
+            this.mesh.position.z += nz * this.def.speed * dt;
+          }
+          // Randomize angle to navigate around the zone
+          this._wanderAngle += (Math.random() > 0.5 ? 0.3 : -0.3);
+        }
+      } else {
+        // Far away — wander patrol
+        this._wanderTimer -= dt;
+        if (this._wanderTimer <= 0) {
+          this._wanderAngle += (Math.random() - 0.5) * Math.PI * 1.2;
+          this._wanderTimer  = 2 + Math.random() * 2;
+        }
+        const wx = Math.sin(this._wanderAngle) * this.def.speed * 0.4 * dt;
+        const wz = Math.cos(this._wanderAngle) * this.def.speed * 0.4 * dt;
+        // Block wander from safe zones too
+        const nextX = this.mesh.position.x + wx;
+        const nextZ = this.mesh.position.z + wz;
+        let inSafe = false;
+        for (const sz of safeZones) {
+          if (nextX > sz.minX && nextX < sz.maxX && nextZ > sz.minZ && nextZ < sz.maxZ) {
+            inSafe = true; break;
+          }
+        }
+        if (!inSafe) {
+          this.mesh.position.x += wx;
+          this.mesh.position.z += wz;
+        } else {
+          this._wanderAngle += Math.PI * 0.5; // turn away
+        }
+        this.mesh.rotation.y = this._wanderAngle;
+      }
+
+      // World border clamp
+      this.mesh.position.x = Math.max(-28, Math.min(28, this.mesh.position.x));
+      this.mesh.position.z = Math.max(-28, Math.min(28, this.mesh.position.z));
     }
 
     // Bob

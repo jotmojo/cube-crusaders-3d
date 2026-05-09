@@ -205,10 +205,13 @@ export class TitleScreen {
     const hiEl = document.getElementById('title-high');
     if (hiEl) hiEl.textContent = hi.toLocaleString();
 
-    document.getElementById('btn-start')?.addEventListener('click', () => {
-      this.hide();
-      onStart();
-    });
+    const btnStart = document.getElementById('btn-start');
+    if (btnStart) {
+      // Use both click and touchend for iOS compatibility
+      const doStart = (e) => { e.preventDefault(); e.stopPropagation(); this.hide(); onStart(); };
+      btnStart.addEventListener('click', doStart);
+      btnStart.addEventListener('touchend', doStart, { passive: false });
+    }
 
     document.getElementById('btn-scores')?.addEventListener('click', () => {
       // Simple inline high score

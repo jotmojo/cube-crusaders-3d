@@ -576,8 +576,35 @@ export class World {
     light.position.copy(mesh.position);
     this.scene.add(light);
 
+    // Floating value label above the bag
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = 128; labelCanvas.height = 64;
+    const lctx = labelCanvas.getContext('2d');
+    // Background pill
+    lctx.fillStyle = 'rgba(0,0,0,0.75)';
+    lctx.roundRect(4, 8, 120, 48, 12);
+    lctx.fill();
+    // Coin icon + value
+    lctx.fillStyle = '#FFD700';
+    lctx.font = 'bold 32px Arial';
+    lctx.textAlign = 'center';
+    lctx.fillText('+' + value, 64, 44);
+    // Glow outline
+    lctx.strokeStyle = 'rgba(255,200,0,0.8)';
+    lctx.lineWidth = 2;
+    lctx.roundRect(4, 8, 120, 48, 12);
+    lctx.stroke();
+
+    const labelTex = new THREE.CanvasTexture(labelCanvas);
+    const labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: labelTex, depthTest: false, transparent: true
+    }));
+    labelSprite.scale.set(2.2, 1.1, 1);
+    labelSprite.position.set(sx, 2.2, sz);
+    this.scene.add(labelSprite);
+
     this.coinBags.push({
-      mesh, light, value, active: true,
+      mesh, light, labelSprite, value, active: true,
       sx, sz, ex, ez,
       progress: 0,
       speed: 0.04 + Math.random() * 0.03, // crosses map in ~25-40s
@@ -594,6 +621,7 @@ export class World {
         b.active = false;
         this.scene.remove(b.mesh);
         this.scene.remove(b.light);
+        if (b.labelSprite) this.scene.remove(b.labelSprite);
         return b.value;
       }
     }
@@ -607,9 +635,9 @@ export class World {
       if (!b.active) return false;
       b.progress += b.speed * dt;
       if (b.progress >= 1) {
-        // Reached destination — remove
         this.scene.remove(b.mesh);
         this.scene.remove(b.light);
+        if (b.labelSprite) this.scene.remove(b.labelSprite);
         return false;
       }
       b._phase += dt * 3;
@@ -619,6 +647,14 @@ export class World {
       b.mesh.rotation.y += dt * 1.5;
       b.light.position.copy(b.mesh.position);
       b.light.intensity = 0.5 + Math.sin(now / 300) * 0.2;
+      // Move label above bag, bob slightly higher
+      if (b.labelSprite) {
+        b.labelSprite.position.set(
+          b.mesh.position.x,
+          b.mesh.position.y + 1.5 + Math.sin(b._phase + 1) * 0.1,
+          b.mesh.position.z
+        );
+      }
       return true;
     });
 

@@ -21,6 +21,8 @@ export class InputManager {
     this._aimPoint    = new THREE.Vector3();
     this._mouseEverMoved = false;
 
+    this._joystickEnabled = false; // only active during gameplay
+
     // Mobile joystick state
     this._leftStick  = { active: false, touchId: -1, baseX: 0, baseY: 0, dx: 0, dy: 0 };
     this._rightStick = { active: false, touchId: -1, baseX: 0, baseY: 0, dx: 0, dy: 0 };
@@ -182,6 +184,7 @@ export class InputManager {
     const MAX  = 55;   // max stick displacement px
 
     const handleStart = (e) => {
+      if (!this._joystickEnabled) return; // let UI buttons through
       e.preventDefault();
       const hw = window.innerWidth / 2;
 
@@ -200,6 +203,7 @@ export class InputManager {
     };
 
     const handleMove = (e) => {
+      if (!this._joystickEnabled) return;
       e.preventDefault();
       for (const t of e.changedTouches) {
         // Left stick — movement
@@ -255,6 +259,7 @@ export class InputManager {
     };
 
     const handleEnd = (e) => {
+      if (!this._joystickEnabled) return;
       e.preventDefault();
       for (const t of e.changedTouches) {
         if (this._leftStick.active && t.identifier === this._leftStick.touchId) {
@@ -377,7 +382,17 @@ export class InputManager {
   // Show/hide joystick layer (call when game starts/stops)
   showMobileUI(visible) {
     if (!IS_TOUCH) return;
+    this._joystickEnabled = visible;
     if (this._layer)      this._layer.style.display      = visible ? 'block' : 'none';
     if (this._weaponBtns) this._weaponBtns.style.display = visible ? 'flex'  : 'none';
+    if (!visible) {
+      // Reset stick state when hiding
+      this._mobileFwd = this._mobileStrafe = 0;
+      this._mobileShooting = false;
+      this._leftStick.active = false;
+      this._rightStick.active = false;
+      this._hideStick('left');
+      this._hideStick('right');
+    }
   }
 }

@@ -255,7 +255,7 @@ export class Player {
 
     // Pivot at player feet, child plane offset forward in pivot local Z
     this._flashPivot.position.set(px, 0.018, pz);
-    this._flashPivot.rotation.y = Math.atan2(aim.x, aim.z);
+    this._flashPivot.rotation.y = Math.atan2(aim.x, aim.z) + Math.PI;
     // Offset the flashlight mesh forward in pivot local space
     // After pivot Y-rotation, local +Z of pivot = world aim direction
     // Plane rotation.x=-PI/2 means plane local Y = pivot local -Z
